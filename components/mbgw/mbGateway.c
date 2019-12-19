@@ -109,7 +109,7 @@ void mb_gateway_configure(struct mb_gateway_config *config) {
                                config->re_de_pin_no, // RTS
                                GPIO_NUM_NC           // CTS
                                ));
-  const int uart_buffer_size = (256 * 2);
+  const int uart_buffer_size = 256;
   ESP_ERROR_CHECK(uart_driver_install(uart_num, uart_buffer_size,
                                       uart_buffer_size, 0, NULL, 0));
 

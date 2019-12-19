@@ -51,7 +51,7 @@ struct mb_gateway_config {
 
 #define MB_GATEWAY_CONFIG_DEFAULT(port, speed, tx, rx, re_de)                  \
   {                                                                            \
-    port, speed, tx, rx, re_de, 502, 5, 0, 10, 100, 2, 3, { '8', 'N', '1' }    \
+    port, speed, tx, rx, re_de, 502, 5, 0, 3, 10, 1, 3, { '8', 'N', '1' }      \
   }
 
 //! configure gateway before start
