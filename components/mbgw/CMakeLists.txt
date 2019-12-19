@@ -85,18 +85,19 @@ set(mbusd_SRC
     ${mbusd_SRC_DIR}/crc16.c
     ${mbusd_SRC_DIR}/modbus.c
     ${mbusd_SRC_DIR}/queue.c
-    ${mbusd_SRC_DIR}/sig.c
     ${CMAKE_CURRENT_BINARY_DIR}/sock.c
     ${mbusd_SRC_DIR}/state.c
     ${CMAKE_CURRENT_BINARY_DIR}/tty.c
 
     esp_log.c
     my_select.c
+    mbGateway.c
+    sig.c
 )
 
 idf_component_register(SRCS ${mbusd_SRC}
-        INCLUDE_DIRS ${mbusd_SRC_DIR}
-        REQUIRES log
+        INCLUDE_DIRS ${mbusd_SRC_DIR} ${COMPONENT_DIR}
+        REQUIRES log esp32 freertos
 )
 
 target_compile_definitions(${COMPONENT_LIB}

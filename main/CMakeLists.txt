@@ -2,7 +2,6 @@ set(sources
     main.cpp
 
     mDNSServer.cpp
-    mbGateway.c
 )
 
 idf_component_register(SRCS ${sources}
@@ -12,7 +11,6 @@ idf_component_register(SRCS ${sources}
                         mbgw
 
                         mdns
-                        esp32
 )
 
 component_compile_options(-std=c++17)
