@@ -1,78 +1,114 @@
-# The following five lines of boilerplate have to be in your project's
-# CMakeLists in this exact order for cmake to work correctly
-cmake_minimum_required(VERSION 3.5)
+set(mbusd_DIST_dir ${COMPONENT_DIR}/mbusd)
 
-set(IDF_TARGET esp32)
+set(mbusd_SRC_DIR ${mbusd_DIST_dir}/src)
 
-set(COMPONENTS
-#    app_trace
-#    app_update
-#    asio
-#    bootloader
-#    bootloader_support
-#    bt
-#    coap
-#    console
-     cxx
-#    driver
-#    efuse
-#    esp-tls
-#    esp32
-#    esp_adc_cal
-#    esp_common
-#    esp_eth
-#    esp_event
-     esp_gdbstub
-#    esp_http_client
-#    esp_http_server
-#    esp_https_ota
-#    esp_https_server
-#    esp_local_ctrl
-#    esp_ringbuf
-#    esp_rom
-#    esp_websocket_client
-#    esp_wifi
-#    espcoredump
-     esptool_py
-#    expat
-#    fatfs
-#    freemodbus
-#    freertos
-#    heap
-#    idf_test
-#    jsmn
-#    json
-#    libsodium
-#    log
-#    lwip
-#    mbedtls
-#    mdns
-#    mqtt
-#    newlib
-#    nghttp
-#    nvs_flash
-#    openssl
-#    partition_table
-#    protobuf-c
-#    protocomm
-#    pthread
-#    sdmmc
-#    smartconfig_ack
-#    soc
-#    spi_flash
-#    spiffs
-#    tcp_transport
-#    tcpip_adapter
-#    ulp
-#    unity
-#    vfs
-#    wear_levelling
-#    wifi_provisioning
-#    wpa_supplicant
-#    xtensa
+file(READ ${mbusd_SRC_DIR}/tty.c tty_c)
+# disable CRTSCTS flags, not supported!
+string(REPLACE
+    "mod->tios.c_cflag &= ~(CSIZE | CSTOPB | PARENB | PARODD | CRTSCTS);"
+    "mod->tios.c_cflag &= ~(CSIZE | CSTOPB | PARENB | PARODD /*| CRTSCTS*/);"
+     tty_c "${tty_c}")
 
-     main
+# disable rts control, API not supported, move control to user code
+string(REGEX REPLACE "void
+tty_set_rts\\(int fd\\)
+{(.*)}
+.*
+tty_clr_rts\\(int fd\\)
+{(.*)}
+#endif"
+
+" /* DISABLED */
+void tty_set_rts(int fd){\\n/*\\1 */ \\n}
+void tty_clr_rts(int fd){\\n/*\\2 */ \\n}
+#endif"
+    tty_c "${tty_c}")
+
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/tty.c "${tty_c}")
+
+file(READ ${mbusd_SRC_DIR}/sock.c sock_c)
+
+string(REPLACE
+    "fcntl(server_s, F_SETFD, 1) == -1"
+    "0 /* DISABLED */"
+     sock_c "${sock_c}")
+
+# setting lwip TX buffer size not implemented
+# see http://lwip.100.n7.nabble.com/Setting-TCP-socket-s-send-amp-receive-buffer-size-td10263.html
+string(REPLACE
+"(setsockopt(server_s, SOL_SOCKET,
+                  SO_SNDBUF, (void *)&sock_opt,
+\t\t          sizeof(sock_opt)) == -1) ||
+      (setsockopt(server_s, SOL_SOCKET,
+                  SO_RCVBUF, (void *)&sock_opt,
+\t\t          sizeof(sock_opt)) == -1)"
+    "(0 /* DISABLED */) ||
+      (0 /* DISABLED */)"
+    sock_c "${sock_c}")
+
+string(REPLACE
+"(setsockopt(sd, SOL_SOCKET,
+                  SO_SNDBUF, (void *)&sock_opt,
+\t\t          sizeof(sock_opt)) == -1) ||
+      (setsockopt(sd, SOL_SOCKET,
+                  SO_RCVBUF, (void *)&sock_opt,
+\t\t          sizeof(sock_opt)) == -1)"
+    "(0 /* DISABLED */) ||
+      (0 /* DISABLED */)"
+    sock_c "${sock_c}")
+
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/sock.c "${sock_c}")
+
+
+file(READ ${mbusd_SRC_DIR}/conn.c conn_c)
+# wrap select to my_select()
+string(REPLACE
+    "select(max_sd + 1, &sdsetrd, &sdsetwr, NULL, &t_out);"
+    "my_select(max_sd + 1, &sdsetrd, &sdsetwr, NULL, &t_out, tty.fd);"
+    conn_c "${conn_c}")
+
+string(REGEX REPLACE
+    "(#include \"state\\.h\")"
+
+    "\\1
+
+extern int my_select(int __nfds, fd_set *__restrict __readfds,
+    fd_set *__restrict __writefds, fd_set *__restrict __exceptfds,
+    struct timeval *__restrict __timeout, int skip_d);"
+    conn_c "${conn_c}")
+
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/conn.c "${conn_c}")
+
+set(mbusd_SRC
+    ${mbusd_SRC_DIR}/cfg.c
+    ${CMAKE_CURRENT_BINARY_DIR}/conn.c
+    ${mbusd_SRC_DIR}/crc16.c
+    ${mbusd_SRC_DIR}/modbus.c
+    ${mbusd_SRC_DIR}/queue.c
+    ${CMAKE_CURRENT_BINARY_DIR}/sock.c
+    ${mbusd_SRC_DIR}/state.c
+    ${CMAKE_CURRENT_BINARY_DIR}/tty.c
+
+    esp_log.c
+    my_select.c
+    mbGateway.c
+    sig.c
 )
 
-include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(esp32-modbusTCP2RTU-gateway)
+idf_component_register(SRCS ${mbusd_SRC}
+        INCLUDE_DIRS ${mbusd_SRC_DIR} ${COMPONENT_DIR}
+        REQUIRES log esp32 freertos
+)
+
+target_compile_definitions(${COMPONENT_LIB}
+    PUBLIC
+        -DTRXCTL
+        -DLOG
+    PRIVATE
+        -DDEBUG
+)
+
+target_compile_options(${COMPONENT_LIB}
+    PRIVATE
+        -Wno-error=maybe-uninitialized
+)
