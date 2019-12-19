@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-void mb_gateway_main();
+void mb_gateway_main(void *p);
 
 #ifdef __cplusplus
 }

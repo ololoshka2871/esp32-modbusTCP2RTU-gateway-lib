@@ -15,6 +15,7 @@
 
 #include <driver/gpio.h>
 #include <driver/uart.h>
+#include <esp_vfs_dev.h>
 
 #include "mbGateway.h"
 
@@ -24,16 +25,16 @@
 // TODO: move to config
 #define UART_PORT 1
 #define UART_TX_PIN 4
-#define UART_RX_PIN 16
-#define UART_RTS_PIN 2
+#define UART_RX_PIN 2
+#define UART_RTS_PIN 16
 
 #define DEBUG_LVL 9
 #define SERIAL_SPEED 57600
 #define GATEWAY_MAX_CON 5
 #define GATEWAY_MAX_TRY 0
-#define GATEWAY_PAUSE_BETWEN_REQUESTS 1
-#define GATEWAY_RESPOUNCE_WAIT 50
-#define GATEWAY_CONNECTION_TIMEOUT 100
+#define GATEWAY_PAUSE_BETWEN_REQUESTS 3
+#define GATEWAY_RESPOUNCE_WAIT 100
+#define GATEWAY_CONNECTION_TIMEOUT_S 1
 
 int isdaemon = TRUE;
 /* Server socket */
@@ -51,21 +52,12 @@ static void configure() {
   strcpy(cfg.ttyport, "/dev/uart/" TOSTRING(UART_PORT));
   cfg.ttyspeed = SERIAL_SPEED;
   strcpy(cfg.ttymode, "8N1");
-  // cfg.serveraddr = "0.0.0.0";
   cfg.serverport = MB_GATEWAY_PORT;
   cfg.maxconn = GATEWAY_MAX_CON;
   cfg.maxtry = GATEWAY_MAX_TRY;
   cfg.rqstpause = GATEWAY_PAUSE_BETWEN_REQUESTS;
   cfg.respwait = GATEWAY_RESPOUNCE_WAIT;
-  cfg.conntimeout = GATEWAY_CONNECTION_TIMEOUT;
-}
-
-static void re_de_init() {
-  /*
-gpio_reset_pin(rts_pin);
-gpio_set_direction(rts_pin, GPIO_MODE_OUTPUT);
-gpio_set_level(rts_pin, 0);
-*/
+  cfg.conntimeout = GATEWAY_CONNECTION_TIMEOUT_S;
 }
 
 static void early_init_uart() {
@@ -75,7 +67,8 @@ static void early_init_uart() {
       .data_bits = UART_DATA_8_BITS,
       .parity = UART_PARITY_DISABLE,
       .stop_bits = UART_STOP_BITS_1,
-      .flow_ctrl = UART_HW_FLOWCTRL_RTS,
+      .flow_ctrl =
+          UART_HW_FLOWCTRL_DISABLE, // need to work UART_MODE_RS485_HALF_DUPLEX
   };
   // Configure UART parameters
   ESP_ERROR_CHECK(uart_param_config(uart_num, &uart_config));
@@ -88,12 +81,17 @@ static void early_init_uart() {
   const int uart_buffer_size = (256 * 2);
   ESP_ERROR_CHECK(uart_driver_install(uart_num, uart_buffer_size,
                                       uart_buffer_size, 0, NULL, 0));
+
+  // We have a driver now installed so set up the read/write functions to use
+  // driver also.
+  esp_vfs_dev_uart_use_driver(uart_num);
+
+  // Setup UART in rs485 half duplex mode
+  // control rs485 IC via RTS pin
+  ESP_ERROR_CHECK(uart_set_mode(uart_num, UART_MODE_RS485_HALF_DUPLEX));
 }
 
-static void re_de_deinit() { /*gpio_reset_pin(rts_pin);*/
-}
-
-void mb_gateway_main() {
+void mb_gateway_main(void *p) {
   const char exename[] = "mb_gateway";
 
   cfg_init();
@@ -101,8 +99,6 @@ void mb_gateway_main() {
   configure();
 
   early_init_uart();
-
-  re_de_init();
 
 #ifdef LOG
   if (log_init(cfg.logname) != RC_OK) {
@@ -120,23 +116,7 @@ void mb_gateway_main() {
 
   conn_loop();
 
-  re_de_deinit();
-
 #ifdef LOG
   logw(2, "%s exited...", exename);
 #endif
-}
-
-void tty_set_rts(int fd) {
-  /*
-(void)fd;
-gpio_set_level(rts_pin, 1);
-*/
-}
-
-void tty_clr_rts(int fd) {
-  /*
-(void)fd;
-gpio_set_level(rts_pin, 0);
-*/
 }

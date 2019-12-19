@@ -19,8 +19,8 @@ tty_clr_rts\\(int fd\\)
 #endif"
 
 " /* DISABLED */
-// void tty_set_rts(int fd){\\n/*\\1 */ \\n//}
-// void tty_clr_rts(int fd){\\n/*\\2 */ \\n//}
+void tty_set_rts(int fd){\\n/*\\1 */ \\n}
+void tty_clr_rts(int fd){\\n/*\\2 */ \\n}
 #endif"
     tty_c "${tty_c}")
 
@@ -59,9 +59,29 @@ string(REPLACE
 
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/sock.c "${sock_c}")
 
+
+file(READ ${mbusd_SRC_DIR}/conn.c conn_c)
+# wrap select to my_select()
+string(REPLACE
+    "select(max_sd + 1, &sdsetrd, &sdsetwr, NULL, &t_out);"
+    "my_select(max_sd + 1, &sdsetrd, &sdsetwr, NULL, &t_out, tty.fd);"
+    conn_c "${conn_c}")
+
+string(REGEX REPLACE
+    "(#include \"state\\.h\")"
+
+    "\\1
+
+extern int my_select(int __nfds, fd_set *__restrict __readfds,
+    fd_set *__restrict __writefds, fd_set *__restrict __exceptfds,
+    struct timeval *__restrict __timeout, int skip_d);"
+    conn_c "${conn_c}")
+
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/conn.c "${conn_c}")
+
 set(mbusd_SRC
     ${mbusd_SRC_DIR}/cfg.c
-    ${mbusd_SRC_DIR}/conn.c
+    ${CMAKE_CURRENT_BINARY_DIR}/conn.c
     ${mbusd_SRC_DIR}/crc16.c
     ${mbusd_SRC_DIR}/modbus.c
     ${mbusd_SRC_DIR}/queue.c
@@ -71,6 +91,7 @@ set(mbusd_SRC
     ${CMAKE_CURRENT_BINARY_DIR}/tty.c
 
     esp_log.c
+    my_select.c
 )
 
 idf_component_register(SRCS ${mbusd_SRC}
@@ -82,6 +103,8 @@ target_compile_definitions(${COMPONENT_LIB}
     PUBLIC
         -DTRXCTL
         -DLOG
+    PRIVATE
+        -DDEBUG
 )
 
 target_compile_options(${COMPONENT_LIB}
